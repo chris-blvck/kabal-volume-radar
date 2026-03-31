@@ -7,6 +7,7 @@ import { startWalletTracker, setWalletAlertFn } from './scanner/walletTracker';
 import { startWatchlistChecker } from './tracker/watchlist';
 import { initCallQueue } from './tracker/callQueue';
 import { startDailyRecap } from './tracker/dailyRecap';
+import { startWeeklyLeaderboard } from './tracker/weeklyLeaderboard';
 import { createManagementBot } from './bot/managementBot';
 import { postSmartMoneyAlert, getChannelBot } from './bot/channelBot';
 
@@ -26,7 +27,7 @@ async function main() {
   console.log('\u2705 Call queue ready');
 
   startScanner();
-  console.log('\u2705 Token scanner running');
+  console.log('\u2705 Token scanner running (6 sources)');
 
   startTracker();
   console.log('\u2705 Performance tracker running');
@@ -42,7 +43,10 @@ async function main() {
   console.log('\u2705 Watchlist checker running');
 
   startDailyRecap(channelBot);
-  console.log('\u2705 Daily recap scheduled');
+  console.log('\u2705 Daily recap scheduled (09:00 UTC)');
+
+  startWeeklyLeaderboard(channelBot);
+  console.log('\u2705 Weekly leaderboard scheduled (Sunday 20:00 UTC)');
 
   console.log('\uD83D\uDE80 Kabal Volume Radar is LIVE');
 
