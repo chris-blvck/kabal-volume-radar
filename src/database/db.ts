@@ -95,9 +95,14 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_calls_called_at ON calls(called_at);
     CREATE INDEX IF NOT EXISTS idx_updates_call_id ON call_updates(call_id);
   `);
+
+  // Migration: add notifications_enabled to pro_subscribers
+  try {
+    db.exec('ALTER TABLE pro_subscribers ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1');
+  } catch { /* column already exists */ }
 }
 
-// ── Calls ────────────────────────────────────────────────────────────────
+// ── Calls ───────────────────────────────────────────────────────────────
 
 export function saveCall(call: {
   contract_address: string; symbol: string; name: string;
@@ -165,11 +170,11 @@ export function getActiveCallsForTracking() {
   ).all() as any[];
 }
 
-// ── Track Record Stats ───────────────────────────────────────────────
+// ── Track Record Stats ─────────────────────────────────────────────────
 
 export interface TrackRecord {
   totalCalls:      number;
-  winRate2x:       number; // % of calls that hit 2x
+  winRate2x:       number;
   winRate5x:       number;
   winRate10x:      number;
   avgMultiplier:   number;
@@ -213,7 +218,7 @@ export function getTrackRecord(days = 30): TrackRecord {
   };
 }
 
-// ── Pro Subscribers ─────────────────────────────────────────────────
+// ── Pro Subscribers ───────────────────────────────────────────────────
 
 export function saveProSubscriber(s: {
   telegram_id: number; telegram_username?: string;
@@ -228,7 +233,21 @@ export function isProSubscriber(id: number): boolean {
   return !!(getDb().prepare('SELECT id FROM pro_subscribers WHERE telegram_id=? AND expires_at>unixepoch()').get(id));
 }
 
-// ── Fast-Track ────────────────────────────────────────────────────────
+/** Returns telegram_ids of active Pro subscribers who have DM alerts enabled. */
+export function getProSubscribersForDM(): number[] {
+  return (getDb()
+    .prepare('SELECT telegram_id FROM pro_subscribers WHERE expires_at > unixepoch() AND notifications_enabled = 1')
+    .all() as any[]).map((r: any) => r.telegram_id);
+}
+
+/** Toggle DM alert preference for a Pro subscriber. */
+export function setNotificationPref(telegramId: number, enabled: boolean): void {
+  getDb().prepare(
+    'UPDATE pro_subscribers SET notifications_enabled = ? WHERE telegram_id = ?'
+  ).run(enabled ? 1 : 0, telegramId);
+}
+
+// ── Fast-Track ───────────────────────────────────────────────────────────
 
 export function saveFastTrack(ft: {
   contract_address: string; submitter_chat_id: number;
