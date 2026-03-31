@@ -6,8 +6,10 @@ import {
   isProSubscriber, saveProSubscriber,
   saveFastTrack, updateFastTrackStatus,
   getRecentCalls, getAthForCall, getActiveFastTracks, getDb,
+  getTrackRecord,
 } from '../database/db';
 import { addWallet, removeWallet, getAllWallets } from '../scanner/walletTracker';
+import { addToWatchlist, removeFromWatchlist, getUserWatchlist } from '../tracker/watchlist';
 import { manualCall } from '../scanner/tokenScanner';
 import { postSmartMoneyAlert } from './channelBot';
 import {
@@ -54,6 +56,70 @@ export function createManagementBot(): Telegraf {
   });
 
   bot.command('menu', ctx => { clear(ctx.from.id); return ctx.reply(welcomeText(), { parse_mode: 'HTML', ...MAIN_MENU }); });
+
+  // ── /record — public track record ─────────────────────────────────
+  bot.command('record', async ctx => {
+    const rec = getTrackRecord(30);
+    if (rec.totalCalls === 0) return ctx.reply('📊 No calls recorded yet. Stay tuned!');
+
+    let msg = `📊 <b>Kabal Radar — Track Record (30d)</b>\n\n`;
+    msg += `📞 Total calls: <b>${rec.totalCalls}</b>\n\n`;
+    msg += `🏆 <b>Win Rates</b>\n`;
+    msg += `  2x: <b>${rec.winRate2x}%</b>  `;
+    msg += `5x: <b>${rec.winRate5x}%</b>  `;
+    msg += `10x: <b>${rec.winRate10x}%</b>\n\n`;
+    msg += `📈 Avg return: <b>${rec.avgMultiplier.toFixed(1)}x</b>\n`;
+    if (rec.bestCall) {
+      msg += `🔥 Best call: <b>$${rec.bestCall.symbol}</b> @ <b>${rec.bestCall.multiplier.toFixed(1)}x</b>\n`;
+    }
+    if (rec.recentCalls.length) {
+      msg += `\n<b>Recent Calls</b>\n`;
+      const medals = ['🥇','🥈','🥉'];
+      rec.recentCalls.forEach((c, i) => {
+        const icon = c.ath >= 2 ? (c.ath >= 5 ? '🚀' : '✅') : '📉';
+        msg += `${i < 3 ? medals[i] : icon} <b>$${c.symbol}</b> | ${fmtMcap(c.mcapAtCall)} | <b>${c.ath.toFixed(1)}x</b>\n`;
+      });
+    }
+    return ctx.reply(msg, { parse_mode: 'HTML' });
+  });
+
+  // ── /watch <CA> [targetMultiplier] ────────────────────────────────
+  bot.command('watch', async ctx => {
+    const parts = ctx.message.text.split(' ').slice(1);
+    const ca    = parts[0]?.trim();
+    if (!ca) return ctx.reply('Usage: /watch <CA> [target_multiplier]\nExample: /watch AbC123… 3.0');
+
+    const targetMult = parts[1] ? parseFloat(parts[1].replace('x', '')) : 2.0;
+    if (isNaN(targetMult) || targetMult <= 1) return ctx.reply('❌ Target must be > 1 (e.g. 2, 3.5, 10)');
+
+    await ctx.reply('🔍 Fetching token…');
+    const result = await addToWatchlist(ctx.from.id, ca, targetMult);
+    return ctx.reply(result.msg, { parse_mode: 'HTML' });
+  });
+
+  // ── /unwatch <CA> ─────────────────────────────────────────────────
+  bot.command('unwatch', async ctx => {
+    const ca = ctx.message.text.split(' ')[1]?.trim();
+    if (!ca) return ctx.reply('Usage: /unwatch <CA>');
+    removeFromWatchlist(ctx.from.id, ca);
+    return ctx.reply('✅ Removed from watchlist.');
+  });
+
+  // ── /watchlist ────────────────────────────────────────────────────
+  bot.command('watchlist', async ctx => {
+    const items = getUserWatchlist(ctx.from.id);
+    if (!items.length) return ctx.reply(
+      '📋 Your watchlist is empty.\n\nUse /watch <CA> [target] to add tokens.',
+    );
+    let msg = `📋 <b>Your Watchlist (${items.length})</b>\n\n`;
+    items.forEach(item => {
+      const status = item.alerted_at ? '✅ alerted' : `⏳ target ${item.target_mult}x`;
+      msg += `<b>$${item.symbol}</b> — ${status}\n`;
+      msg += `  Entry: ${fmtMcap(item.mcap_at_add ?? 0)}  <code>${item.contract_address}</code>\n\n`;
+    });
+    msg += `<i>Remove: /unwatch &lt;CA&gt;</i>`;
+    return ctx.reply(msg, { parse_mode: 'HTML' });
+  });
 
   // ── REFERRAL button ─────────────────────────────────────────
   bot.action('referral', async ctx => {

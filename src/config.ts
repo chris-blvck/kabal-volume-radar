@@ -39,6 +39,10 @@ export const config = {
     maxCallsPerHour:     Number(process.env.MAX_CALLS_PER_HOUR)    || 5,
     skipHighRiskBundles: process.env.SKIP_HIGH_RISK_BUNDLES !== 'false',
   },
+  proDelay: {
+    // Minutes free channel waits after Pro channel receives a call
+    minutes: Number(process.env.PRO_DELAY_MINUTES) || 5,
+  },
   pricing: {
     fastTrack3hSol:  Number(process.env.FAST_TRACK_3H_SOL)  || 1.2,
     fastTrack12hSol: Number(process.env.FAST_TRACK_12H_SOL) || 2.2,

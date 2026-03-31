@@ -4,9 +4,10 @@ import { startScanner } from './scanner/tokenScanner';
 import { startTracker } from './tracker/performanceTracker';
 import { startPinnedUpdater } from './tracker/pinnedMessage';
 import { startWalletTracker, setWalletAlertFn } from './scanner/walletTracker';
+import { startWatchlistChecker } from './tracker/watchlist';
+import { initCallQueue } from './tracker/callQueue';
 import { createManagementBot } from './bot/managementBot';
-import { postSmartMoneyAlert } from './bot/channelBot';
-import { Telegraf } from 'telegraf';
+import { postSmartMoneyAlert, getChannelBot } from './bot/channelBot';
 
 async function main() {
   console.log('🦅 Kabal Volume Radar starting…');
@@ -21,9 +22,11 @@ async function main() {
   console.log('✅ Management bot online');
 
   // Channel bot (for posting calls & updates)
-  // The channel bot instance is managed internally in channelBot.ts
-  // We need a reference to start the pinned updater
-  const channelBot = new Telegraf(process.env.CHANNEL_BOT_TOKEN!);
+  const channelBot = getChannelBot();
+
+  // Init call queue — must happen before scanner starts posting
+  initCallQueue(channelBot);
+  console.log('✅ Call queue ready');
 
   // Token scanner (algo calls)
   startScanner();
@@ -41,6 +44,10 @@ async function main() {
   setWalletAlertFn(async (msg) => postSmartMoneyAlert(msg));
   startWalletTracker();
   console.log('✅ Wallet tracker running');
+
+  // Watchlist checker — DMs users when price targets are hit
+  startWatchlistChecker(mgmtBot);
+  console.log('✅ Watchlist checker running');
 
   console.log('🚀 Kabal Volume Radar is LIVE');
 
