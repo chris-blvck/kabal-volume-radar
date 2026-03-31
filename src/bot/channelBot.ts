@@ -1,5 +1,6 @@
 import { Telegraf } from 'telegraf';
 import { ScoredToken } from '../scanner/filters';
+import { HolderAnalysis } from '../scanner/helius';
 import { saveCall, updateCallMessageId } from '../database/db';
 import { formatCallMessage } from '../utils/formatMessage';
 import { config } from '../config';
@@ -11,9 +12,13 @@ function getBot(): Telegraf {
   return _bot;
 }
 
-export async function postCall(token: ScoredToken, source: 'algo' | 'fasttrack' = 'algo'): Promise<void> {
-  const p   = token.pair;
-  const ca  = p.baseToken.address;
+export async function postCall(
+  token: ScoredToken,
+  source: 'algo' | 'fasttrack' = 'algo',
+  holders?: HolderAnalysis
+): Promise<void> {
+  const p  = token.pair;
+  const ca = p.baseToken.address;
 
   const callId = saveCall({
     contract_address:        ca,
@@ -22,8 +27,8 @@ export async function postCall(token: ScoredToken, source: 'algo' | 'fasttrack' 
     chain:                   p.chainId,
     dex_id:                  p.dexId,
     pair_address:            p.pairAddress,
-    market_cap_at_call:      p.marketCap || p.fdv,
-    price_at_call:           parseFloat(p.priceUsd || '0'),
+    market_cap_at_call:      p.marketCap ?? p.fdv,
+    price_at_call:           parseFloat(p.priceUsd ?? '0'),
     volume_1h_at_call:       p.volume?.h1,
     price_change_1h_at_call: p.priceChange?.h1,
     liquidity_at_call:       p.liquidity?.usd,
@@ -37,18 +42,16 @@ export async function postCall(token: ScoredToken, source: 'algo' | 'fasttrack' 
     source,
   });
 
-  const text    = formatCallMessage(token);
+  const text     = formatCallMessage(token, holders);
   const keyboard = buildKeyboard(p.url, ca);
-  const bot     = getBot();
-  const channel = config.telegram.trendingChannelId;
+  const channel  = config.telegram.trendingChannelId;
+  const bot      = getBot();
 
   try {
     let sent: any;
     if (p.info?.imageUrl) {
       try {
-        sent = await bot.telegram.sendPhoto(channel, p.info.imageUrl, {
-          caption: text, parse_mode: 'HTML', reply_markup: keyboard,
-        });
+        sent = await bot.telegram.sendPhoto(channel, p.info.imageUrl, { caption: text, parse_mode: 'HTML', reply_markup: keyboard });
       } catch {
         sent = await bot.telegram.sendMessage(channel, text, { parse_mode: 'HTML', reply_markup: keyboard });
       }
@@ -65,8 +68,7 @@ export async function postCall(token: ScoredToken, source: 'algo' | 'fasttrack' 
 export async function postUpdateToChannel(text: string, replyTo?: number): Promise<void> {
   try {
     await getBot().telegram.sendMessage(
-      config.telegram.trendingChannelId,
-      text,
+      config.telegram.trendingChannelId, text,
       { parse_mode: 'HTML', ...(replyTo ? { reply_to_message_id: replyTo } : {}) }
     );
   } catch (err: any) {
@@ -74,16 +76,26 @@ export async function postUpdateToChannel(text: string, replyTo?: number): Promi
   }
 }
 
+export async function postSmartMoneyAlert(text: string): Promise<void> {
+  try {
+    // Post to pro channel if configured, otherwise main channel
+    const target = config.telegram.proChannelId || config.telegram.trendingChannelId;
+    await getBot().telegram.sendMessage(target, text, { parse_mode: 'HTML' });
+  } catch (err: any) {
+    console.error('[ChannelBot] SmartMoney error:', err.message);
+  }
+}
+
 function buildKeyboard(dexUrl: string, ca: string) {
   return {
     inline_keyboard: [
       [
-        { text: '\uD83D\uDCCA DexScreener', url: dexUrl },
-        { text: '\u26A1 GMGN',             url: `https://gmgn.ai/sol/token/${ca}` },
+        { text: '📊 DexScreener', url: dexUrl },
+        { text: '⚡ GMGN',          url: `https://gmgn.ai/sol/token/${ca}` },
       ],
       [
-        { text: '\uD83D\uDD25 Axiom', url: `https://axiom.trade/meme/${ca}` },
-        { text: '\uD83D\uDFE2 BullX', url: `https://bullx.io/terminal?chainId=1399811149&address=${ca}` },
+        { text: '🔥 Axiom', url: `https://axiom.trade/meme/${ca}` },
+        { text: '🟢 BullX', url: `https://bullx.io/terminal?chainId=1399811149&address=${ca}` },
       ],
     ],
   };
