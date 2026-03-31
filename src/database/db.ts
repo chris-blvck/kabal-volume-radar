@@ -86,33 +86,28 @@ function initSchema(db: Database.Database): void {
       expires_at INTEGER
     );
 
-    CREATE INDEX IF NOT EXISTS idx_calls_address ON calls(contract_address);
+    CREATE TABLE IF NOT EXISTS kv (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calls_address   ON calls(contract_address);
     CREATE INDEX IF NOT EXISTS idx_calls_called_at ON calls(called_at);
-    CREATE INDEX IF NOT EXISTS idx_call_updates_call_id ON call_updates(call_id);
+    CREATE INDEX IF NOT EXISTS idx_updates_call_id ON call_updates(call_id);
   `);
 }
 
+// ── Calls ────────────────────────────────────────────────────────────────
+
 export function saveCall(call: {
-  contract_address: string;
-  symbol: string;
-  name: string;
-  chain?: string;
-  dex_id?: string;
-  pair_address?: string;
-  market_cap_at_call?: number;
-  price_at_call?: number;
-  volume_1h_at_call?: number;
-  price_change_1h_at_call?: number;
-  liquidity_at_call?: number;
-  image_url?: string;
-  website?: string;
-  twitter?: string;
-  telegram_url?: string;
-  dexscreener_url?: string;
-  is_cto?: boolean;
-  is_dexscreener_paid?: boolean;
-  source?: string;
-  message_id?: number;
+  contract_address: string; symbol: string; name: string;
+  chain?: string; dex_id?: string; pair_address?: string;
+  market_cap_at_call?: number; price_at_call?: number;
+  volume_1h_at_call?: number; price_change_1h_at_call?: number;
+  liquidity_at_call?: number; image_url?: string;
+  website?: string; twitter?: string; telegram_url?: string;
+  dexscreener_url?: string; is_cto?: boolean; is_dexscreener_paid?: boolean;
+  source?: string; message_id?: number;
 }): number {
   const result = getDb().prepare(`
     INSERT OR IGNORE INTO calls (
@@ -120,119 +115,139 @@ export function saveCall(call: {
       market_cap_at_call, price_at_call, volume_1h_at_call, price_change_1h_at_call,
       liquidity_at_call, image_url, website, twitter, telegram_url, dexscreener_url,
       is_cto, is_dexscreener_paid, source, message_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     call.contract_address, call.symbol, call.name,
-    call.chain || 'solana', call.dex_id || null, call.pair_address || null,
-    call.market_cap_at_call || null, call.price_at_call || null,
-    call.volume_1h_at_call || null, call.price_change_1h_at_call || null,
-    call.liquidity_at_call || null, call.image_url || null,
-    call.website || null, call.twitter || null,
-    call.telegram_url || null, call.dexscreener_url || null,
+    call.chain ?? 'solana', call.dex_id ?? null, call.pair_address ?? null,
+    call.market_cap_at_call ?? null, call.price_at_call ?? null,
+    call.volume_1h_at_call ?? null, call.price_change_1h_at_call ?? null,
+    call.liquidity_at_call ?? null, call.image_url ?? null,
+    call.website ?? null, call.twitter ?? null,
+    call.telegram_url ?? null, call.dexscreener_url ?? null,
     call.is_cto ? 1 : 0, call.is_dexscreener_paid ? 1 : 0,
-    call.source || 'algo', call.message_id || null
+    call.source ?? 'algo', call.message_id ?? null,
   );
   if (result.lastInsertRowid) return result.lastInsertRowid as number;
-  // Already exists — return existing id
-  const row = getDb().prepare('SELECT id FROM calls WHERE contract_address = ?').get(call.contract_address) as any;
-  return row.id;
+  return (getDb().prepare('SELECT id FROM calls WHERE contract_address=?').get(call.contract_address) as any).id;
 }
 
 export function getCallByAddress(address: string) {
-  return getDb().prepare('SELECT * FROM calls WHERE contract_address = ?').get(address) as any;
+  return getDb().prepare('SELECT * FROM calls WHERE contract_address=?').get(address) as any;
 }
-
-export function isAlreadyCalled(address: string): boolean {
-  return !!getCallByAddress(address);
-}
-
+export function isAlreadyCalled(address: string): boolean { return !!getCallByAddress(address); }
 export function getRecentCalls(limit = 10) {
   return getDb().prepare('SELECT * FROM calls ORDER BY called_at DESC LIMIT ?').all(limit) as any[];
 }
-
-export function updateCallMessageId(callId: number, messageId: number): void {
-  getDb().prepare('UPDATE calls SET message_id = ? WHERE id = ?').run(messageId, callId);
+export function updateCallMessageId(callId: number, msgId: number): void {
+  getDb().prepare('UPDATE calls SET message_id=? WHERE id=?').run(msgId, callId);
 }
 
-export function saveCallUpdate(update: {
-  call_id: number;
-  market_cap?: number;
-  price?: number;
-  percent_change?: number;
-  ath_multiplier?: number;
-  milestone?: string;
+// ── Call Updates ─────────────────────────────────────────────────────
+
+export function saveCallUpdate(u: {
+  call_id: number; market_cap?: number; price?: number;
+  percent_change?: number; ath_multiplier?: number; milestone?: string;
 }): void {
   getDb().prepare(`
-    INSERT INTO call_updates (call_id, market_cap, price, percent_change, ath_multiplier, milestone)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    update.call_id, update.market_cap || null, update.price || null,
-    update.percent_change || null, update.ath_multiplier || null, update.milestone || null
-  );
+    INSERT INTO call_updates (call_id,market_cap,price,percent_change,ath_multiplier,milestone)
+    VALUES (?,?,?,?,?,?)
+  `).run(u.call_id, u.market_cap??null, u.price??null, u.percent_change??null, u.ath_multiplier??null, u.milestone??null);
 }
 
 export function getAthForCall(callId: number): number {
-  const row = getDb().prepare(
-    'SELECT MAX(ath_multiplier) as ath FROM call_updates WHERE call_id = ?'
-  ).get(callId) as any;
-  return row?.ath || 1;
+  const r = getDb().prepare('SELECT MAX(ath_multiplier) as a FROM call_updates WHERE call_id=?').get(callId) as any;
+  return r?.a ?? 1;
 }
 
 export function getActiveCallsForTracking() {
-  return getDb().prepare(`
-    SELECT * FROM calls
-    WHERE called_at > unixepoch() - 48*3600
-    ORDER BY called_at DESC
-  `).all() as any[];
+  return getDb().prepare(
+    'SELECT * FROM calls WHERE called_at > unixepoch()-48*3600 ORDER BY called_at DESC'
+  ).all() as any[];
 }
 
-export function saveProSubscriber(sub: {
-  telegram_id: number;
-  telegram_username?: string;
-  payment_tx: string;
-  sol_amount: number;
-  expires_at: number;
+// ── Track Record Stats ───────────────────────────────────────────────
+
+export interface TrackRecord {
+  totalCalls:      number;
+  winRate2x:       number; // % of calls that hit 2x
+  winRate5x:       number;
+  winRate10x:      number;
+  avgMultiplier:   number;
+  bestCall:        { symbol: string; multiplier: number } | null;
+  recentCalls:     Array<{ symbol: string; ath: number; calledAt: number; mcapAtCall: number }>;
+}
+
+export function getTrackRecord(days = 30): TrackRecord {
+  const db   = getDb();
+  const since = Math.floor(Date.now() / 1000) - days * 86_400;
+
+  const calls = db.prepare(
+    'SELECT id, symbol, market_cap_at_call, called_at FROM calls WHERE called_at > ? ORDER BY called_at DESC'
+  ).all(since) as any[];
+
+  const totalCalls = calls.length;
+  if (totalCalls === 0) return { totalCalls: 0, winRate2x: 0, winRate5x: 0, winRate10x: 0, avgMultiplier: 1, bestCall: null, recentCalls: [] };
+
+  let wins2x = 0, wins5x = 0, wins10x = 0, multSum = 0;
+  let bestCall: TrackRecord['bestCall'] = null;
+  const recentCalls: TrackRecord['recentCalls'] = [];
+
+  for (const c of calls) {
+    const ath = getAthForCall(c.id);
+    multSum += ath;
+    if (ath >= 2)  wins2x++;
+    if (ath >= 5)  wins5x++;
+    if (ath >= 10) wins10x++;
+    if (!bestCall || ath > bestCall.multiplier) bestCall = { symbol: c.symbol, multiplier: ath };
+    if (recentCalls.length < 10) recentCalls.push({ symbol: c.symbol, ath, calledAt: c.called_at, mcapAtCall: c.market_cap_at_call ?? 0 });
+  }
+
+  return {
+    totalCalls,
+    winRate2x:     Math.round((wins2x  / totalCalls) * 100),
+    winRate5x:     Math.round((wins5x  / totalCalls) * 100),
+    winRate10x:    Math.round((wins10x / totalCalls) * 100),
+    avgMultiplier: parseFloat((multSum / totalCalls).toFixed(2)),
+    bestCall,
+    recentCalls,
+  };
+}
+
+// ── Pro Subscribers ─────────────────────────────────────────────────
+
+export function saveProSubscriber(s: {
+  telegram_id: number; telegram_username?: string;
+  payment_tx: string; sol_amount: number; expires_at: number;
 }): void {
-  getDb().prepare(`
-    INSERT OR REPLACE INTO pro_subscribers (telegram_id, telegram_username, payment_tx, sol_amount, expires_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(sub.telegram_id, sub.telegram_username || null, sub.payment_tx, sub.sol_amount, sub.expires_at);
+  getDb().prepare(
+    'INSERT OR REPLACE INTO pro_subscribers (telegram_id,telegram_username,payment_tx,sol_amount,expires_at) VALUES (?,?,?,?,?)'
+  ).run(s.telegram_id, s.telegram_username??null, s.payment_tx, s.sol_amount, s.expires_at);
 }
 
-export function isProSubscriber(telegramId: number): boolean {
-  const row = getDb().prepare(
-    'SELECT id FROM pro_subscribers WHERE telegram_id = ? AND expires_at > unixepoch()'
-  ).get(telegramId) as any;
-  return !!row;
+export function isProSubscriber(id: number): boolean {
+  return !!(getDb().prepare('SELECT id FROM pro_subscribers WHERE telegram_id=? AND expires_at>unixepoch()').get(id));
 }
+
+// ── Fast-Track ────────────────────────────────────────────────────────
 
 export function saveFastTrack(ft: {
-  contract_address: string;
-  submitter_chat_id: number;
-  duration_hours: number;
-  sol_amount: number;
-  payment_tx?: string;
-  status?: string;
-  expires_at?: number;
+  contract_address: string; submitter_chat_id: number;
+  duration_hours: number; sol_amount: number;
+  payment_tx?: string; status?: string; expires_at?: number;
 }): number {
-  const result = getDb().prepare(`
-    INSERT INTO fast_track_queue (contract_address, submitter_chat_id, duration_hours, sol_amount, payment_tx, status, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    ft.contract_address, ft.submitter_chat_id, ft.duration_hours, ft.sol_amount,
-    ft.payment_tx || null, ft.status || 'pending', ft.expires_at || null
-  );
-  return result.lastInsertRowid as number;
+  return (getDb().prepare(`
+    INSERT INTO fast_track_queue (contract_address,submitter_chat_id,duration_hours,sol_amount,payment_tx,status,expires_at)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(ft.contract_address, ft.submitter_chat_id, ft.duration_hours, ft.sol_amount,
+    ft.payment_tx??null, ft.status??'pending', ft.expires_at??null).lastInsertRowid) as number;
 }
 
-export function updateFastTrackStatus(id: number, status: string, paymentTx?: string, expiresAt?: number): void {
+export function updateFastTrackStatus(id: number, status: string, tx?: string, expiresAt?: number): void {
   getDb().prepare(
-    'UPDATE fast_track_queue SET status = ?, payment_tx = COALESCE(?, payment_tx), expires_at = COALESCE(?, expires_at) WHERE id = ?'
-  ).run(status, paymentTx || null, expiresAt || null, id);
+    'UPDATE fast_track_queue SET status=?,payment_tx=COALESCE(?,payment_tx),expires_at=COALESCE(?,expires_at) WHERE id=?'
+  ).run(status, tx??null, expiresAt??null, id);
 }
 
 export function getActiveFastTracks() {
-  return getDb().prepare(
-    "SELECT * FROM fast_track_queue WHERE status = 'active' AND expires_at > unixepoch()"
-  ).all() as any[];
+  return getDb().prepare("SELECT * FROM fast_track_queue WHERE status='active' AND expires_at>unixepoch()").all() as any[];
 }
