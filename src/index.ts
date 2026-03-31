@@ -8,6 +8,7 @@ import { startWatchlistChecker } from './tracker/watchlist';
 import { initCallQueue } from './tracker/callQueue';
 import { startDailyRecap } from './tracker/dailyRecap';
 import { startWeeklyLeaderboard } from './tracker/weeklyLeaderboard';
+import { startGraduationTracker } from './tracker/graduationTracker';
 import { createManagementBot } from './bot/managementBot';
 import { postSmartMoneyAlert, getChannelBot } from './bot/channelBot';
 
@@ -27,7 +28,7 @@ async function main() {
   console.log('\u2705 Call queue ready');
 
   startScanner();
-  console.log('\u2705 Token scanner running (6 sources)');
+  console.log('\u2705 Token scanner running (8 sources)');
 
   startTracker();
   console.log('\u2705 Performance tracker running');
@@ -37,16 +38,19 @@ async function main() {
 
   setWalletAlertFn(async (msg) => postSmartMoneyAlert(msg));
   startWalletTracker();
-  console.log('\u2705 Wallet tracker running');
+  console.log('\u2705 Wallet tracker + convergence running');
 
   startWatchlistChecker(mgmtBot);
   console.log('\u2705 Watchlist checker running');
+
+  startGraduationTracker(channelBot);
+  console.log('\u2705 Graduation tracker running (every 3min)');
 
   startDailyRecap(channelBot);
   console.log('\u2705 Daily recap scheduled (09:00 UTC)');
 
   startWeeklyLeaderboard(channelBot);
-  console.log('\u2705 Weekly leaderboard scheduled (Sunday 20:00 UTC)');
+  console.log('\u2705 Weekly leaderboard scheduled (Sun 20:00 UTC)');
 
   console.log('\uD83D\uDE80 Kabal Volume Radar is LIVE');
 
